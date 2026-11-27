@@ -39,7 +39,7 @@ On an RTX 4090, DAS-Sparse processes **3.50 billion MIMO vectors/s**, compared w
 
 <picture>
   <source media="(max-width: 600px)" srcset="assets/throughput-mobile.png">
-  <img src="assets/throughput.png" width="100%" alt="On an RTX 4090, DAS-Sparse reaches 264 times the throughput of ChannelNet (IEEE TSP, 2025) at 512 receive vectors per channel. The bars show all nine measured detectors.">
+  <img src="assets/throughput.png" width="100%" alt="On an RTX 4090, DAS-Sparse reaches 264 times the throughput of ChannelNet at 512 receive vectors per channel. The bars show all nine measured detectors.">
 </picture>
 
 ## Quick Start
