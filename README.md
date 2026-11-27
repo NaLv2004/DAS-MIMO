@@ -64,7 +64,7 @@ python evaluate.py --models das_sparse das_dense --rate 0.8 --snr 10.1 --frames 
 
 ## Baselines
 
-The repository includes trained [ADMM-Net](checkpoints/admm_net.pt), [DetNet](checkpoints/detnet.pt) and [ChannelNet](checkpoints/channelnet.pt) models, together with [MMSE, AMP, EP and K-best](dasmimo/baselines/classical.py).
+The repository includes trained [ADMM-Net](checkpoints/admm_net.pt), [DetNet](checkpoints/detnet.pt) and [ChannelNet](checkpoints/channelnet.pt) models, together with [MMSE, AMP, EP and K-best](dasmimo/baselines/classical.py). These baseline detectors are adapted from the following reference papers and repositories.
 
 <details open>
 <summary><strong>Baseline papers and public implementations</strong></summary>
