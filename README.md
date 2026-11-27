@@ -1,6 +1,6 @@
 # DAS-MIMO
 
-**DAS-MIMO synthesizes low-complexity detection algorithms for coded MIMO receivers.** A channel decoder can recover bits even when some symbol estimates are wrong. DAS-MIMO exploits this error-correction capability by learning the detector's update rules from the loss after decoding. It represents the detector as a graph of basic algebraic operations and learns which operations to perform, how to combine their outputs, and which intermediate estimates to reuse in later iterations.
+**DAS-MIMO learns the structure of a MIMO detection algorithm directly from data.** It represents the detector as a directed acyclic graph of candidate algebraic operations. Gradient descent jointly optimizes which operations contribute to each update, which intermediate variables they take as inputs, and how their outputs are combined. The resulting detector can use a different update rule at each iteration and reuse estimates computed several iterations earlier.
 
 The cost assigned to each operation during training controls the trade-off between decoding performance and detector complexity. A stronger penalty produces DAS-Sparse, which relies mainly on inexpensive vector operations. DAS-Dense retains more matrix operations to improve detection at high code rates. After training, the compiler simplifies each learned graph into explicit detector equations and generates fused CUDA kernels from those equations.
 
