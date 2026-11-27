@@ -1,41 +1,75 @@
-# DAS-MIMO
+<h1>
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/das-mimo-mobile.png">
+  <img src="assets/das-mimo.png" width="100%" alt="DAS-MIMO: Differentiable Algorithm Synthesis for Low-Complexity Coded MIMO Detection. The first learned update shares the matched-filter output between two branches.">
+</picture>
+</h1>
 
-**DAS-MIMO learns the structure of a MIMO detection algorithm directly from data.** It represents the detector as a directed acyclic graph of candidate algebraic operations. Gradient descent jointly optimizes which operations contribute to each update, which intermediate variables they take as inputs, and how their outputs are combined. The resulting detector can use a different update rule at each iteration and reuse estimates computed several iterations earlier.
+**Jiayan Xu, Huayi Zhou, and Chuan Zhang**
 
-The cost assigned to each operation during training controls the trade-off between decoding performance and detector complexity. A stronger penalty produces DAS-Sparse, which relies mainly on inexpensive vector operations. DAS-Dense retains more matrix operations to improve detection at high code rates. After training, the compiler simplifies each learned graph into explicit detector equations and generates fused CUDA kernels from those equations.
+DAS-MIMO learns the structure of a MIMO detection algorithm directly from data. Gradient descent selects the algebraic operations in each update, the variables they take as inputs, and the estimates reused from earlier iterations. The learned graph gives explicit detector equations that can be compiled into fused CUDA kernels.
 
-## Installation
+[Run the pretrained detectors](#quick-start) &nbsp; | &nbsp; [Paper results](#paper-results) &nbsp; | &nbsp; [Training and benchmarks](docs/reproduction.md)
 
-The experiments below used Linux, Python 3.10.12, NumPy 1.26.4 and PyTorch 2.3.0 with CUDA 11.8. CUDA generation runs on a CPU. Compiling and timing kernels requires a CUDA-capable GPU, NVIDIA's CUDA toolkit with `nvcc` and cuBLASLt, and a C++17 host compiler. The throughput checks used an RTX 4090 and CUDA toolkit 13.2.
+## What did the search learn?
+
+At code rate **0.446**, the first DAS-Sparse update computes the matched-filter output once. One branch uses this vector directly and the other multiplies it by the inverse regularized Gram matrix. The detector combines the branches with learned weights $a$ and $b$ and clips the result.
+
+In the full graph below, 32 of the 36 retained operators perform clipping, scalar denoising or diagonal scaling. Only four perform full matrix–vector products. The capital letters trace 20 intermediate vectors reused across iterations.
+
+[![Complete DAS-Sparse computational graph at code rate 0.446. Matching capital letters connect a stored vector to its uses in later iterations.](assets/sparse-algorithm.png)](assets/sparse-algorithm.png)
+
+<details>
+<summary><strong>View the full DAS-MIMO framework</strong></summary>
+
+A typed graph defines the candidate operations and their compatible inputs. A shared backbone and learned basis components adapt the graph to the code configuration. After training, the compiler prunes inactive operations, removes unused computations, and fuses the remaining expressions into CUDA kernels.
+
+[![Framework from the paper showing the operator pool, conditional differentiable synthesis, graph simplification and CUDA generation.](assets/framework.png)](assets/framework.png)
+
+</details>
+
+## Paper results
+
+At **$R \approx 0.675$** and **$E_b/N_0 = 9.6$ dB**, DAS-Sparse uses the fewest FLOPs of the nine detectors and achieves one-third the block error rate (BLER) of AMP (15). DAS-Dense achieves the lowest BLER. Compared with EP (7), it reduces BLER from 0.00463 to 0.00308 and equivalent FLOPs per vector from 107.1k to 18.5k.
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/cost-and-bler-mobile.png">
+  <img src="assets/cost-and-bler.png" width="100%" alt="At rate 0.675 and 9.6 dB, DAS-Sparse is the leftmost point and DAS-Dense the lowest. Relative to EP (7), DAS-Dense uses 83% fewer equivalent FLOPs and achieves 33% lower BLER.">
+</picture>
+
+The comparison uses 16 receive and eight transmit antennas, 16-QAM, 1,024-bit LDPC codewords and perfect channel knowledge. Each channel matrix is reused for 64 receive vectors.
+
+DAS-Sparse achieves the highest GPU throughput among the detectors compared in the paper. The measurement below includes preprocessing on **128 channel matrices**, each reused for **512 receive vectors**.
+
+<picture>
+  <source media="(max-width: 600px)" srcset="assets/throughput-mobile.png">
+  <img src="assets/throughput.png" width="100%" alt="DAS-Sparse processes 3.50 billion MIMO vectors per second on an RTX 4090. AMP (8) reaches 2.17 billion and DAS-Dense reaches 1.97 billion.">
+</picture>
+
+## Quick start
+
+The pretrained weights are included in the repository. From a Python 3.10 environment:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install torch==2.3.0 --index-url https://download.pytorch.org/whl/cu118
+git clone https://github.com/NaLv2004/DAS-MIMO.git
+cd DAS-MIMO
 python -m pip install -r requirements.txt
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+python evaluate.py --models das_sparse das_dense --rate 0.8 --snr 10.1 --frames 1024
 ```
 
-Run the commands below from the project root.
-
-## Models and checkpoints
-
-| Detector | Command-line name | Configuration or depth | Evaluation checkpoint |
+| Detector | Training code rates | Configuration | Checkpoint |
 |---|---|---|---|
-| DAS-Sparse | `das_sparse` | [Sparse configuration](configs/das_sparse.json), rates 0.3–0.8 | [Weights](checkpoints/das_sparse.pt) |
-| DAS-Dense | `das_dense` | [Dense configuration](configs/das_dense.json), rates 0.6–0.8 | [Weights](checkpoints/das_dense.pt) |
-| ADMM-Net | `admm_net` | 10 layers | [Weights](checkpoints/admm_net.pt) |
-| DetNet | `detnet` | L = 10, joint 16-QAM output | [Weights](checkpoints/detnet.pt) |
-| ChannelNet | `channelnet` | 10 iterations, 10 features | [Weights](checkpoints/channelnet.pt) |
-| MMSE | `mmse` | Linear MMSE | Analytical |
-| AMP | `amp8`, `amp15` | 8 or 15 iterations, damping 0.5 | Analytical |
-| EP | `ep3`, `ep7` | 3 or 7 iterations | Analytical |
-| K-best | `kbest8` | List size 8 | Analytical |
+| **DAS-Sparse** | 0.3–0.8 | [Sparse](configs/das_sparse.json) | [Weights](checkpoints/das_sparse.pt) |
+| **DAS-Dense** | 0.6–0.8 | [Dense](configs/das_dense.json) | [Weights](checkpoints/das_dense.pt) |
 
-Each learned detector is distributed as a PyTorch state dictionary. [DetNet's initialization](checkpoints/detnet_init.pt) contains the weights learned on noiseless observations before coded training. The evaluation checkpoint contains the weights after coded training.
+The [reproduction guide](docs/reproduction.md) covers dataset generation, model training, BLER evaluation, CUDA export, FLOP counts and RTX 4090 throughput measurements.
 
-### Baseline references
+## Baselines
+
+The repository includes trained [ADMM-Net](checkpoints/admm_net.pt), [DetNet](checkpoints/detnet.pt) and [ChannelNet](checkpoints/channelnet.pt) models, together with [MMSE, AMP, EP and K-best](dasmimo/baselines/classical.py).
+
+<details>
+<summary><strong>Baseline papers and public implementations</strong></summary>
 
 | Detector | Paper | Public implementation |
 |---|---|---|
@@ -47,67 +81,4 @@ Each learned detector is distributed as a PyTorch state dictionary. [DetNet's in
 | EP | Céspedes, Olmos, Sánchez-Fernández, and Pérez-Cruz, [Expectation Propagation Detection for High-Order High-Dimensional MIMO Systems](https://doi.org/10.1109/TCOMM.2014.2332349), IEEE TCOM, 2014 | [NVIDIA Sionna, EPDetector](https://github.com/NVlabs/sionna/blob/2f0a3820269b53fd022780a6f2f5f720f7ceb9b4/src/sionna/phy/mimo/detection.py#L1080) |
 | K-best | Guo and Nilsson, [Algorithm and Implementation of the K-Best Sphere Decoding for MIMO Detection](https://doi.org/10.1109/JSAC.2005.862402), IEEE JSAC, 2006 | [IIP Group, K-best search](https://github.com/IIP-Group/massiveMIMOdetection/blob/main/detectors/KBEST.m) |
 
-## Data and training
-
-Each configuration generates 156,250 training codewords across 24 fixed code-rate and SNR pairs. Each codeword contains 1,024 coded bits and occupies 32 receive vectors with 16-QAM and eight transmit antennas. The generator stores the information bits, rate-matched bits, Rayleigh channels and noise. Training reuses these frames across epochs. The three learned baselines share the DAS-Sparse dataset.
-
-```bash
-python generate_data.py --config das_sparse
-python generate_data.py --config das_dense
-python train.py das_sparse
-python train.py das_dense
-python train.py admm_net
-python train.py detnet
-python train.py channelnet
-```
-
-DAS-Sparse and DAS-Dense use operator sparsity coefficients of `1e-3` and `1e-5`, respectively. The relative penalties on matrix operators are 300 and 30. Both models combine the LDPC decoder loss with an auxiliary loss on intermediate detector outputs. The weight of the auxiliary loss decays exponentially during training. Each epoch writes evaluation weights to `runs/<model>/<model>.pt` and the optimizer state with the detector to `runs/<model>/last.pt`. Use `--weights runs/<model>` in the evaluation or timing commands to select your own weights.
-
-For a short training run on one GPU:
-
-```bash
-python generate_data.py --config das_sparse --tasks 10 22 --frames-per-task 4 --output data/example
-python train.py das_sparse --data data/example --epochs 1 --batch 4 --microbatch 2 --output runs/example
-```
-
-`--batch` sets the number of codewords per GPU and optimizer step. `--microbatch` controls the number per backward pass. For a four-GPU run, use `torchrun --standalone --nproc-per-node=4 train.py das_sparse`. To continue a run, pass `--resume runs/das_sparse/last.pt` with the same dataset.
-
-## Decoded BLER
-
-The evaluation measures the fraction of codewords with at least one erroneous information bit after eight offset-min-sum iterations. All selected detectors receive the same information bits, channels and noise. The seed selects the evaluation frames independently of the model list and batch size.
-
-```bash
-python evaluate.py --models das_sparse das_dense admm_net detnet channelnet mmse amp8 amp15 ep3 ep7 kbest8 \
-    --rate 0.8 --snr 10.1 --frames 4096 --seed 43001
-python evaluate.py --models das_sparse das_dense --rate 0.6747796940963932 \
-    --snr 9.566666666666666 --frames 8192 --seed 43002
-```
-
-`--snr` denotes the information-bit `Eb/N0` in dB. Use `--nr` and `--nt` to select the antenna dimensions and `--nmse` for channel-estimation NMSE in linear units. For example, `--models das_sparse das_dense channelnet --nr 24 --nt 8 --nmse 0` evaluates transfer to 24 receive antennas. With `--nr 16 --nt 8 --nmse 0.01`, the detector receives a channel estimate at −20 dB NMSE. A JSON report from `--output /path/to/result.json` contains the actual information length, block count and error count.
-
-## CUDA generation and equivalent FLOPs
-
-The compiler conditions the checkpoint on the selected code configuration, prunes operator weights below 0.01, removes dead expressions and shares common subexpressions. It emits a detector specialized for the paper's 16 × 8 grouped-channel layout. The standalone exporter, FLOP counter and throughput benchmark call the same compiler.
-
-```bash
-python generate_cuda.py das_sparse --task 10 --compile
-python generate_cuda.py das_dense --task 10 --compile
-python flops.py --task 10 --reuse 64
-python flops.py --models das_sparse --task 22 --reuse 64
-python flops.py --models das_dense --task 23 --reuse 64
-```
-
-Task 10 corresponds to rate 0.8 in both configurations. For the 691-bit point at rate approximately 0.675, the published complexity calculation uses Sparse task 22 and Dense task 23. Their conditioning rates are 0.674780 and 0.675708. The BLER calculation uses the same 691-bit payload for both detectors. The task IDs, rates and training SNRs are listed in the dataset's `manifest.json`.
-
-The counter reports the per-vector detector cost plus the per-channel preprocessing cost divided by the reuse count. One fused multiply-add counts as two operations. Scalar comparisons and elementary functions each count as one equivalent operation. Each K-best compare-exchange counts as one comparison and four record moves. DetNet uses the unfolded-layer count reported in the paper. Its CUDA kernel folds the linear constellation readout into the trained affine map. K-best's symbol search is timed through symbol output. Its BLER path computes bit metrics over the survivor list.
-
-## GPU throughput
-
-```bash
-python throughput.py --models das_sparse das_dense --tasks 10 --channels 128 --reuse 64 128 512 --check
-python throughput.py --models admm_net detnet channelnet mmse amp8 amp15 ep3 ep7 kbest8 \
-    --channels 128 --reuse 64 128 512 --check
-python throughput.py --models das_sparse das_dense --all-tasks
-```
-
-Each timing starts with 128 raw channel matrices and covers channel preprocessing and detection of all receive vectors. The reuse count is the number of vectors per channel. The benchmark selects the fastest measured launch configuration, reports median CUDA-event time and converts it to millions of MIMO vectors per second. The paper reports the median across 24 code configurations for each DAS detector. `--check` also compares CUDA and PyTorch symbol estimates on matched inputs. Building a library for the first time incurs compilation time outside the measured interval.
+</details>
